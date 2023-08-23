@@ -278,14 +278,16 @@ if __name__ == "__main__":
 
     for alpha, fb, gamma in zip(alpha_values, fb_values, gamma_values):
         
-        print(r"$\alpha$=%.2f, $f_b$=%.2f, $\gamma$=%.2f"%(alpha, fb, gamma))
+        print(r"alpha=%.2f, f_b=%.2f, gamma=%.2f"%(alpha, fb, gamma))
+
         population_mocker = BinaryPopulationMocker_numpy(
-            alpha, fb, gamma, parsec_model, n_star=n_star
+            alpha, fb, gamma, parsec_model, 
+            n_star=n_star
             )
         g_mock, bp_rp_mock = population_mocker.mock_population()
         
         X.extend([[bp_rp, gmag] for bp_rp, gmag in zip(bp_rp_mock, g_mock)])
-        Y.extend([[fb, gamma]])
+        Y.extend([[alpha, fb, gamma]])
 
 
     X = np.array(X)
