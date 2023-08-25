@@ -45,25 +45,21 @@ def calculate_grakel_graph(args):
     return Graph(initialization_object=adjacency_matrix, node_labels=node_attributes)
 
 
+
 class GaussianProcess:
+    
     def __init__(self, K, K_star, K_star_star=None):
         # self.kernel = kernel
         self.K = K
         self.K_star = K_star
         # self.K_star_star = K_star_star
-        # self.X_train = None
-        # self.y_train = None
     
     def fit(self, X, y):
         self.X_train = X
         self.y_train = y
     
-    def predict(self, X_test):
-        # K = self.kernel(self.X_train, self.X_train)
+    def predict(self):
         self.K_inv = np.linalg.inv(self.K)
-        # K_star = self.kernel(self.X_train, X_test)
-        # K_star_star = self.kernel(X_test, X_test)
-        # print(self.K_star.shape, self.K_inv.shape)
         mu = self.K_star @ self.K_inv @ self.y_train
         # cov = self.K_star_star - self.K_star @ self.K_inv @ self.K_star
         return mu

@@ -2,13 +2,14 @@ import numpy as np
 import copy
 from scipy.interpolate import LinearNDInterpolator
 import pandas as pd
-from model import StellarEvolutionModel
+from stellarmodel import StellarEvolutionModel
 import numpyro
 from numpyro import distributions as dist, infer
 import jax.random as random
 import jax
 import jax.numpy as jnp
 from jax import jit, vmap
+from tqdm import tqdm
 jax.config.update('jax_platform_name', 'cpu')
 
 
@@ -166,7 +167,7 @@ class BinaryPopulationMocker_mdf:
 
 
 class BinaryPopulationMocker_numpy:
-    def __init__(self, alpha, fb, gamma, stellar_evolution_model, m_min=0.1, m_max=1., n_star=5000, seed=42):
+    def __init__(self, alpha, fb, gamma, stellar_evolution_model, m_min=0.1, m_max=1., moh_min=-1, moh_max=0.3, n_star=5000, seed=42):
         self.alpha = alpha
         self.fb = fb
         self.gamma = gamma
@@ -174,8 +175,8 @@ class BinaryPopulationMocker_numpy:
         self.alpha = alpha
         self.m_min  = m_min
         self.m_max  = m_max
-        self.moh_min = -1
-        self.moh_max = 0.3
+        self.moh_min = moh_min
+        self.moh_max = moh_max
         self.n_star = n_star
         self.random_state = np.random.default_rng(seed=seed)
     
@@ -203,14 +204,13 @@ class BinaryPopulationMocker_numpy:
         self.Rp_tot = self._combine_mags(self.Rp1, self.Rp2)
         
         self._is_binary_ind = _is_binary==1
-
         self.mags = copy.copy(self.G1)
-        self.mags.at[self._is_binary_ind].set(self.G_tot[self._is_binary_ind])
+        self.mags[self._is_binary_ind] = self.G_tot[self._is_binary_ind]
         
         self.colors = self.Bp1 - self.Rp1
-        self.colors.at[self._is_binary_ind].set(self.Bp_tot[self._is_binary_ind] - self.Rp_tot[self._is_binary_ind])
+        self.colors[self._is_binary_ind] = self.Bp_tot[self._is_binary_ind] - self.Rp_tot[self._is_binary_ind]
+        
         return self.mags, self.colors
-    
     
     def _combine_mags(self, mag1, mag2):
         flux1 = 10 ** (-0.4 * mag1)  # Convert magnitude to flux in linear space
@@ -249,21 +249,23 @@ if __name__ == "__main__":
     # fb_true = 0.5
     # gamma_true = 1.1
 
-    parsec_model = StellarEvolutionModel(stellar_model_dir+stellar_model_name)
+    parsec_model = StellarEvolutionModel(
+        stellar_model_dir+stellar_model_name, backend="numpy"
+        )
     # population_mocker = BinaryPopulationMocker_numpy(alpha_true, fb_true, gamma_true, parsec_model)
 
     # g_mock, bp_rp_mock = population_mocker.mock_population()
     # print(g_mock, bp_rp_mock)
 
-    n_train = 500
+    n_train = 200
     n_star  = 5000
-
     # Define the parameters for the uniform distributions
-    alpha_min, alpha_max = 1.1, 4.
-    fb_min, fb_max = 0.01, 0.99
-    gamma_min, gamma_max = -0.9, 4.
+    alpha_min, alpha_max = 1.3,  3.
+    fb_min,    fb_max    = 0.01, 0.99
+    gamma_min, gamma_max = 1.3,  4.
 
-    # Set the random seed for reproducibility (optional)
+    """uniform parameter space"""
+    # # Set the random seed for reproducibility (optional)
     np.random.seed(42)
 
     # Generate random values for fb and gamma
@@ -272,17 +274,36 @@ if __name__ == "__main__":
     fb_values    = np.random.uniform(fb_min,    fb_max,    size=n_train)
     gamma_values = np.random.uniform(gamma_min, gamma_max, size=n_train)
 
+    """meshgrids for the parameter space"""
+
+    # n_alpha, n_fb, n_gamma = 10, 10, 10
+    # n_train = n_alpha * n_fb * n_gamma
+
+    # # Generate the grids for each parameter
+    # alpha_values = np.linspace(alpha_min, alpha_max, n_alpha)
+    # fb_values = np.linspace(fb_min, fb_max, n_fb)
+    # gamma_values = np.linspace(gamma_min, gamma_max, n_gamma)
+
+
+    # # Create a meshgrid for all combinations of parameter values
+    # alpha_mesh, fb_mesh, gamma_mesh = np.meshgrid(alpha_values, fb_values, gamma_values, indexing='ij')
+
+    # # Flatten the meshgrids to obtain 1D arrays of parameter values
+    # alpha_flat = alpha_mesh.flatten()
+    # fb_flat = fb_mesh.flatten()
+    # gamma_flat = gamma_mesh.flatten()
     X = []
     Y = []
 
 
-    for alpha, fb, gamma in zip(alpha_values, fb_values, gamma_values):
+    for alpha, fb, gamma in tqdm(zip(alpha_values, fb_values, gamma_values)):
         
-        print(r"alpha=%.2f, f_b=%.2f, gamma=%.2f"%(alpha, fb, gamma))
+        # print(r"alpha=%.2f, f_b=%.2f, gamma=%.2f"%(alpha, fb, gamma))
 
         population_mocker = BinaryPopulationMocker_numpy(
             alpha, fb, gamma, parsec_model, 
-            n_star=n_star
+            n_star=n_star, m_min=0.5, m_max=1.,
+            moh_min=-0.5, moh_max=0,
             )
         g_mock, bp_rp_mock = population_mocker.mock_population()
         
@@ -296,4 +317,7 @@ if __name__ == "__main__":
 
     print(X.shape, Y.shape)
 
-    np.savez('/nfsdata/users/jdli_ny/wlkernel/mock/binary_train_flatZ_abg.npz', X=X, Y=Y)
+    # np.savez(f'/nfsdata/users/jdli_ny/wlkernel/mock/binary_train_flatZ_abg_mesh_{n_star}cmd.npz', X=X, Y=Y)
+    data_dir = "/nfsdata/users/jdli_ny/wlkernel/mock/"
+    fname = data_dir+f'binary_train_moh_m0p5_0_abg_{n_train}tr_{n_star}cmd.npz'
+    np.savez(fname, X=X, Y=Y)
