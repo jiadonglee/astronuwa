@@ -1,21 +1,17 @@
 import numpy as np
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
-from nuwa.wlkernel import make_graph, calculate_grakel_graph
+from wlkernel import make_graph, calculate_grakel_graph
 import multiprocessing
-from grakel import Graph
 from grakel.kernels import WeisfeilerLehman, VertexHistogram
-from scipy.sparse import lil_matrix
 from scipy.spatial.distance import pdist, squareform
-from scipy.spatial import cKDTree
-from sklearn.neighbors import KDTree
 np.set_printoptions(suppress=True)
 import pickle
 from sklearn.base import BaseEstimator, RegressorMixin
 
 
 
-class wl_GaussianProcess(BaseEstimator, RegressorMixin):
+class WLGaussianProcess(BaseEstimator, RegressorMixin):
     
     def __init__(self, radius=0.1, subsample_factor=1, n_iter=3, num_cpu=24):
         self.radius = radius
@@ -60,7 +56,21 @@ class wl_GaussianProcess(BaseEstimator, RegressorMixin):
         K_star = self.wl_kernel.transform(grakel_list_test)
         self.K_star = K_star / np.max(K_star)
 
-        K_inv = np.linalg.inv(self.K)
-        mu = self.K_star @ K_inv @ self.y_train
-        return mu
+        # K_inv = np.linalg.inv(self.K)
+        # mu = self.K_star @ K_inv @ self.y_train
+        # return mu
+        try:
+            K_inv = np.linalg.inv(self.K)
+            return self.K_star @ K_inv @ self.y_train
+        
+        except np.linalg.LinAlgError:
+            print("Error: The matrix K is not invertible.")
+            return np.ones((self.K_star.shape[0], self.y_train.shape[1])) * -9999.
+        
+
+if __name__=="__main__":
+
+    model = WLGaussianProcess(
+        radius=0.1, n_iter=5, 
+        subsample_factor=1, num_cpu=32)
     

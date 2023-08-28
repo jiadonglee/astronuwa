@@ -11,6 +11,7 @@ jax.config.update('jax_platform_name', 'cpu')
 
 
 class StellarEvolutionModel:
+    
     def __init__(self, data_file, backend="numpy"):
         self.data = pd.read_csv(data_file)
         self.data = self.data.sort_values('Mini')
