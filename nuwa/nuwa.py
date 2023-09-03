@@ -1,17 +1,13 @@
+import sys
+sys.path.append("/home/jdli/astronuwa/")
 import numpy as np
 import copy
-from scipy.interpolate import LinearNDInterpolator
-import pandas as pd
-from nuwa.stellarmodel import StellarEvolutionModel
-import numpyro
-from numpyro import distributions as dist, infer
+from  stellarmodel import StellarEvolutionModel
 import jax.random as random
 import jax
 import jax.numpy as jnp
-from jax import jit, vmap
 from tqdm import tqdm
 jax.config.update('jax_platform_name', 'cpu')
-
 
 
 class Nuwa_pop_mono:
@@ -219,29 +215,6 @@ class Nuwa_pop:
             key, subkey  = random.split(self.random_state)
             binary_class = random.bernoulli(subkey, p=self.fb, shape=(num_star,))
         return binary_class
-    
-    def fit(self, mags=None, colors=None):
-        
-        """under construction"""
-        numpyro.set_rng_seed(42)
-
-        # Prior distributions
-        alpha = dist.Uniform(0, 3)
-        fb    = dist.Uniform(0, 1) 
-        gamma = dist.Uniform(0, 3)
-
-        # Sample parameters
-        params = numpyro.sample([alpha, fb, gamma], strategy='slice')  
-
-        # Generate population
-        self = Nuwa_pop(params[0], params[1], params[2])
-
-        simulated_mags, simulated_colors = self.mock_population()
-
-        # Likelihood
-        numpyro.sample('obs', dist.Normal(simulated_mags, 0.02), obs=mags)
-        numpyro.sample('obs', dist.Normal(simulated_colors, 0.02), obs=colors)
-
 
 
 
@@ -251,63 +224,70 @@ if __name__ == "__main__":
     save_chain_dir = "/nfsdata/users/jdli_ny/nuwa/mcmc/"
     stellar_model_name = "PARSEC_logage9p5_MH_n1p5_0p6.csv"
 
-    # settings
-    # alpha_true = 2.3
-    # fb_true = 0.5
-    # gamma_true = 1.1
-
     parsec_model = StellarEvolutionModel(
-        stellar_model_dir+stellar_model_name, backend="jax"
+        stellar_model_dir+stellar_model_name, backend="numpy"
         )
-    # population_mocker = BinaryPopulationMocker_numpy(alpha_true, fb_true, gamma_true, parsec_model)
 
-    # g_mock, bp_rp_mock = population_mocker.mock_population()
-    # print(g_mock, bp_rp_mock)
-
-    n_train = 200
-    n_star  = 2000
+    n_train = 5000
+    n_star  = 1000
     # Define the parameters for the uniform distributions
     alpha_min, alpha_max = 1.3,  3.
-    fb_min,    fb_max    = 0.01, 0.99
-    gamma_min, gamma_max = 1.3,  4.
+    fb_min,    fb_max    = 0.1, 0.9
+    gamma_min, gamma_max = -0.9,  3.
 
     """uniform parameter space"""
     # # Set the random seed for reproducibility (optional)
     np.random.seed(42)
 
-    # Generate random values for fb and gamma
-    # alpha_true = 2.3
-    alpha_values = np.random.uniform(alpha_min, alpha_max, size=n_train)
-    fb_values    = np.random.uniform(fb_min,    fb_max,    size=n_train)
-    gamma_values = np.random.uniform(gamma_min, gamma_max, size=n_train)
+    sample_mode = "uniform"
+
+    if sample_mode == "uniform":
+
+        # Generate random values for fb and gamma
+        # alpha_true = 2.3
+        alpha_values = np.random.uniform(alpha_min, alpha_max, size=n_train)
+        fb_values    = np.random.uniform(fb_min,    fb_max,    size=n_train)
+        gamma_values = np.random.uniform(gamma_min, gamma_max, size=n_train)
+        
+    else:     
+        alpha_grids = np.arange(alpha_min, alpha_max+0.2, 0.2)
+        fb_grids    = np.arange(fb_min, fb_max, 0.1)
+        gamma_grids = np.arange(gamma_min, gamma_max+0.1, 0.1)
+
+        fb_grids, gamma_grids = np.meshgrid(
+            fb_grids, gamma_grids, indexing='ij')
+
+        # alpha_values = alpha_grids.flatten()
+        fb_values = fb_grids.flatten()
+        gamma_values = gamma_grids.flatten()
 
     X = []
     Y = []
 
 
     for alpha, fb, gamma in tqdm(zip(alpha_values, fb_values, gamma_values)):
-        
-        # print(r"alpha=%.2f, f_b=%.2f, gamma=%.2f"%(alpha, fb, gamma))
+    # for fb, gamma in tqdm(zip(fb_values, gamma_values)):
 
         pop = Nuwa_pop(
-            alpha, fb, gamma, parsec_model, 
-            n_star=n_star, m_min=0.5, m_max=1.,
-            moh_min=-0.5, moh_max=0, 
-            backend='jax'
+            alpha, fb, gamma, 
+            parsec_model, 
+            n_star=n_star, 
+            m_min=0.5, m_max=1.,
+            moh_min=-1, moh_max=0., 
+            backend='numpy'
             )
         g_mock, bp_rp_mock = pop.mock_population()
         
         X.extend([[bp_rp, gmag] for bp_rp, gmag in zip(bp_rp_mock, g_mock)])
         Y.extend([[alpha, fb, gamma]])
-
+        # Y.extend([[fb, gamma]])
 
     X = np.array(X)
-    X = X.reshape(n_train, n_star, 2)
+    X = X.reshape(len(fb_values), n_star, 3)
     Y = np.array(Y)
 
     print(X.shape, Y.shape)
 
-
     data_dir = "/nfsdata/users/jdli_ny/wlkernel/mock/"
-    fname = data_dir+f'binary_train_moh_m0p5_0_abg_{n_train}tr_{n_star}cmd.npz'
-    np.savez(fname, X=X, Y=Y)
+    fname = data_dir + f'cmd_train_moh_m1_0_abg_{n_train}tr_{n_star}.npz'
+    np.savez(fname, cmd=X, theta=Y)
