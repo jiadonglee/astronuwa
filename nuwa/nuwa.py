@@ -224,9 +224,7 @@ if __name__ == "__main__":
     save_chain_dir = "/nfsdata/users/jdli_ny/nuwa/mcmc/"
     stellar_model_name = "PARSEC_logage9p5_MH_n1p5_0p6.csv"
 
-    parsec_model = StellarEvolutionModel(
-        stellar_model_dir+stellar_model_name, backend="numpy"
-        )
+    parsec_model = StellarEvolutionModel(stellar_model_name, backend="numpy")
 
     n_train = 5000
     n_star  = 1000
